@@ -3,13 +3,11 @@ import (
     "fmt"
     "log"
     "os"
-
     "github.com/annddvaa/gin-firebase-backend/models"
     "gorm.io/driver/mysql"
     "gorm.io/gorm"
     "gorm.io/gorm/logger"
 )
-// DB adalah instance GORM global yang dipakai di seluruh aplikasi
 var DB *gorm.DB
 func InitDatabase() {
     // Ambil konfigurasi dari environment variables
@@ -18,16 +16,14 @@ func InitDatabase() {
     user     := os.Getenv("DB_USER")
     password := os.Getenv("DB_PASSWORD")
     dbname   := os.Getenv("DB_NAME")
-
-    // Format DSN (Data Source Name) untuk MySQL
-    // Format: user:pass@tcp(host:port)/dbname?params
+    
     dsn := fmt.Sprintf(
         "%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
         user, password, host, port, dbname,
     )
 // Konfigurasi GORM
     gormConfig := &gorm.Config{
-        Logger: logger.Default.LogMode(logger.Info), // Log semua query SQL
+        Logger: logger.Default.LogMode(logger.Info), 
     }
 // Buka koneksi
     var err error
@@ -40,14 +36,13 @@ func InitDatabase() {
     if err != nil {
         log.Fatalf("Gagal mendapatkan sql.DB: %v", err)
     }
-sqlDB.SetMaxOpenConns(25)   // Maksimal 25 koneksi terbuka
-    sqlDB.SetMaxIdleConns(10)   // Maksimal 10 koneksi idle
+    sqlDB.SetMaxOpenConns(25)   
+    sqlDB.SetMaxIdleConns(10)   
 
-    // AutoMigrate: buat/update tabel sesuai struct model
-    // GORM akan buat tabel jika belum ada
     err = DB.AutoMigrate(
         &models.User{},
         &models.Product{},
+        &models.CartItem{},
     )
     if err != nil {
         log.Fatalf("AutoMigrate gagal: %v", err)
