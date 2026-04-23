@@ -1,92 +1,77 @@
 package middleware
-import (
-    "net/http"
-    "os"
-    "strings"
 
-    "github.com/gin-gonic/gin"
-    "github.com/golang-jwt/jwt/v5"
+import (
+	"net/http"
+	"os"
+	"strings"
+	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 )
 
-// AuthMiddleware memvalidasi Backend JWT Token di setiap request
-// Dipasang di route group yang memerlukan autentikasi
 func AuthMiddleware() gin.HandlerFunc {
     return func(c *gin.Context) {
-        // 1. Ambil token dari header Authorization
         authHeader := c.GetHeader("Authorization")
-        if authHeader == "" {
-            c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-                "success": false,
-                "message": "Authorization header tidak ditemukan",
-                "error_code": "MISSING_TOKEN",
-            })
+        if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+            c.AbortWithStatusJSON(401, gin.H{"message": "Token tidak ditemukan"})
             return
         }
 
-        // 2. Validasi format "Bearer <token>"
-        parts := strings.SplitN(authHeader, " ", 2)
-        if len(parts) != 2 || parts[0] != "Bearer" {
-            c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-                "success":    false,
-                "message":   "Format token salah. Gunakan: Bearer <token>",
-                "error_code": "INVALID_TOKEN_FORMAT",
-            })
-            return
-        }
-
-        tokenString := parts[1]
-
-        // 3. Parse dan verifikasi JWT token
-        token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-            // Pastikan algoritma yang dipakai adalah HS256
-            if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-                return nil, jwt.ErrSignatureInvalid
-            }
+        tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+        token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
             return []byte(os.Getenv("JWT_SECRET")), nil
         })
 
         if err != nil || !token.Valid {
-            c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-                "success":    false,
-                "message":   "Token tidak valid atau kadaluarsa",
-                "error_code": "INVALID_TOKEN",
-            })
+            c.AbortWithStatusJSON(401, gin.H{"message": "Token tidak valid"})
             return
         }
 
-        // 4. Simpan claims ke context Gin agar bisa diakses handler
         claims, ok := token.Claims.(jwt.MapClaims)
         if !ok {
-            c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-                "success": false,
-                "message": "Token claims tidak valid",
-            })
+            c.AbortWithStatusJSON(401, gin.H{"message": "Gagal membaca claims"})
             return
         }
 
-        // Set ke context — bisa diakses di handler: c.Get("user_id")
-        c.Set("user_id",       claims["sub"])
-        c.Set("email",         claims["email"])
-        c.Set("role",          claims["role"])
-        c.Set("firebase_uid",  claims["firebase_uid"])
-
-        // 5. Lanjutkan ke handler berikutnya
+        var userID interface{}
+        if val, exists := claims["sub"]; exists {
+            userID = val
+        }
+        
+        role, _ := claims["role"].(string)
+        c.Set("user_id", userID)
+        c.Set("role", role)
         c.Next()
     }
 }
-
-// AdminOnly middleware — hanya role "admin" yang boleh akses
 func AdminOnly() gin.HandlerFunc {
-    return func(c *gin.Context) {
-        role, _ := c.Get("role")
-        if role != "admin" {
-            c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-                "success": false,
-                "message": "Akses ditolak. Hanya admin yang diizinkan.",
-                "error_code": "FORBIDDEN",
-            })
-            return
-        }
-        c.Next()
-    }
+	return func(c *gin.Context) {
+
+		role, exists := c.Get("role")
+		if !exists {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"message": "role tidak ditemukan",
+			})
+			return
+		}
+
+		roleStr, ok := role.(string)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"message": "role tidak valid",
+			})
+			return
+		}
+
+		if roleStr != "admin" {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"message": "akses hanya admin",
+			})
+			return
+		}
+
+		c.Next()
+	}
 }
