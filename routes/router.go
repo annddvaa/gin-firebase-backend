@@ -6,10 +6,8 @@ import (
 )
 
 func SetupRouter() *gin.Engine {
-    // gin.Default() sudah include Logger & Recovery middleware
     r := gin.Default()
 
-    // ─── CORS Middleware (izinkan request dari Flutter app) ───
     r.Use(func(c *gin.Context) {
         c.Header("Access-Control-Allow-Origin",  "*")
         c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
@@ -21,43 +19,44 @@ func SetupRouter() *gin.Engine {
         c.Next()
     })
 
-    // ─── Init handlers ────────────────────────────────────────
     authHandler    := handlers.NewAuthHandler()
     productHandler := handlers.NewProductHandler()
+    cartHandler := handlers.NewCartHandler()
 
-    // ─── API v1 group ─────────────────────────────────────────
     v1 := r.Group("/v1")
     {
-        // Health check — tidak perlu auth
         v1.GET("/health", func(c *gin.Context) {
             c.JSON(200, gin.H{"status": "ok", "service": "gin-firebase-backend"})
         })
 
-        // ── Auth routes (public) ──────────────────────────────
         auth := v1.Group("/auth")
         {
-            // Terima Firebase token → return Backend JWT
             auth.POST("/verify-token", authHandler.VerifyToken)
         }
-
-        // ── Protected routes (butuh Backend JWT) ──────────────
         protected := v1.Group("")
         protected.Use(middleware.AuthMiddleware())
         {
-            // Products — semua user terautentikasi bisa GET
             products := protected.Group("/products")
             {
-                products.GET("",     productHandler.GetAll)    // GET  /v1/products
-                products.GET("/:id", productHandler.GetByID)   // GET  /v1/products/:id
+                products.GET("",     productHandler.GetAll)    
+                products.GET("/:id", productHandler.GetByID)   
 
-                // Create, Update, Delete — hanya admin
                 adminProducts := products.Group("")
                 adminProducts.Use(middleware.AdminOnly())
                 {
-                    adminProducts.POST("",     productHandler.Create)  // POST   /v1/products
-                    adminProducts.PUT("/:id",  productHandler.Update)  // PUT    /v1/products/:id
-                    adminProducts.DELETE("/:id", productHandler.Delete)// DELETE /v1/products/:id
+                    adminProducts.POST("",     productHandler.Create)  
+                    adminProducts.PUT("/:id",  productHandler.Update)  
+                    adminProducts.DELETE("/:id", productHandler.Delete)
                 }
+            }
+            cart := protected.Group("/cart")
+            {
+                cart.GET("", cartHandler.GetCart)         
+                cart.POST("", cartHandler.AddToCart)      
+                cart.PUT("/:id", cartHandler.UpdateQty)   
+                cart.DELETE("/:id", cartHandler.Remove)   
+                cart.DELETE("", cartHandler.Clear)        
+                cart.POST("/checkout", cartHandler.Checkout)
             }
         }
     }
